@@ -38,15 +38,23 @@ function toValidPackageName(projectName) {
     .replace(/[^a-z0-9-~]+/g, '-')
 }
 
+/**
+ * 判断一个文件名是否存在，是否可以跳过是否要覆盖的提问
+ * @param dir 文件名称
+ * @returns boolean
+ */
 function canSkipEmptying(dir: string) {
+  // 该文件名不存在，可以跳过
   if (!fs.existsSync(dir)) {
     return true
   }
 
   const files = fs.readdirSync(dir)
+  // 如果文件夹中没有文件，可以跳过
   if (files.length === 0) {
     return true
   }
+  // 如果文件夹中只有一个文件，并且是 .git 文件时，可以跳过
   if (files.length === 1 && files[0] === '.git') {
     return true
   }
@@ -54,11 +62,13 @@ function canSkipEmptying(dir: string) {
   return false
 }
 
+// 将一个文件夹删除
 function emptyDir(dir) {
   if (!fs.existsSync(dir)) {
     return
   }
 
+  // 递归删除一个文件夹中所有内容，如果遇到文件夹，递归进去把里面文件删除了
   postOrderDirectoryTraverse(
     dir,
     (dir) => fs.rmdirSync(dir),
@@ -68,6 +78,10 @@ function emptyDir(dir) {
 
 async function init() {
   console.log()
+  /**
+   * 展示 Vue.js - The Progressive JavaScript Framework
+   * 这里判断系统是否可以支持渐变字，如果支持，就使用渐变，不支持就用原始的字
+   */
   console.log(
     process.stdout.isTTY && process.stdout.getColorDepth() > 8
       ? banners.gradientBanner
@@ -75,7 +89,9 @@ async function init() {
   )
   console.log()
 
+  // 获取当前操作的绝对路径（该文件所在的位置，不拼该文件名称）
   const cwd = process.cwd()
+
   // possible options:
   // --default
   // --typescript / --ts
@@ -92,6 +108,8 @@ async function init() {
   // --vue-devtools / --devtools
   // --force (for force overwriting)
 
+  // 第一个是 node 的存储地址
+  // 第二个是当前文件的绝对路径（完整）
   const args = process.argv.slice(2)
 
   // alias is not supported by parseArgs
@@ -106,12 +124,14 @@ async function init() {
     devtools: { type: 'boolean' }
   } as const
 
+  // 使用 node 中 util 提供的 parseArgs 解析命令行参数
   const { values: argv, positionals } = parseArgs({
     args,
     options,
     strict: false
   })
 
+  // 判断传入了哪些 feature flag，传入了之后，就在后面的提问中不出现了
   // if any of the feature flags is set, we would skip the feature prompts
   const isFeatureFlagsUsed =
     typeof (
@@ -130,11 +150,14 @@ async function init() {
       (argv.devtools || argv['vue-devtools'])
     ) === 'boolean'
 
+  // 取用户要创建的项目的名称
   let targetDir = positionals[0]
+  // 如果用户没有传入要创建的项目名称，那么默认为 vue-project
   const defaultProjectName = !targetDir ? 'vue-project' : targetDir
-
+  // 如果要创建的名称重复了，是否要强制覆盖已有的文件
   const forceOverwrite = argv.force
 
+  // 国际化
   const language = getLanguage()
 
   let result: {
@@ -169,6 +192,7 @@ async function init() {
     // - Add Vue DevTools 7 extension for debugging? (experimental)
     result = await prompts(
       [
+        // 项目名称
         {
           name: 'projectName',
           type: targetDir ? null : 'text',
@@ -176,6 +200,9 @@ async function init() {
           initial: defaultProjectName,
           onState: (state) => (targetDir = String(state.value).trim() || defaultProjectName)
         },
+
+        // 通过上一步输入的项目名称，判断文件名是否已经存在，或者文件夹是这个名字，但是没有文件
+        // 就可以跳过该提问
         {
           name: 'shouldOverwrite',
           type: () => (canSkipEmptying(targetDir) || forceOverwrite ? null : 'toggle'),
@@ -188,18 +215,28 @@ async function init() {
             return `${dirForPrompt} ${language.shouldOverwrite.message}`
           },
           initial: true,
+          // 是
           active: language.defaultToggleOptions.active,
+          // 否
           inactive: language.defaultToggleOptions.inactive
         },
+
+        // 覆盖检测
         {
           name: 'overwriteChecker',
           type: (prev, values) => {
+            // 如果存在了同名的文件，用户选择不覆盖，那么抛出错误
             if (values.shouldOverwrite === false) {
+              // 【操作取消】
               throw new Error(red('✖') + ` ${language.errors.operationCancelled}`)
             }
             return null
           }
         },
+
+        // 包名称检查
+        // 判断项目的名称是否一个合法的包名称，如果不是一个合法的
+        // 把转换完的名称作为默认包名称，并且让用户确认，用户可以用这个修改过的，也可以重新输入
         {
           name: 'packageName',
           type: () => (isValidPackageName(targetDir) ? null : 'text'),
@@ -207,6 +244,8 @@ async function init() {
           initial: () => toValidPackageName(targetDir),
           validate: (dir) => isValidPackageName(dir) || language.packageName.invalidMessage
         },
+
+        // 是否需要 TypeScript
         {
           name: 'needsTypeScript',
           type: () => (isFeatureFlagsUsed ? null : 'toggle'),
@@ -215,6 +254,8 @@ async function init() {
           active: language.defaultToggleOptions.active,
           inactive: language.defaultToggleOptions.inactive
         },
+
+        // 是否需要 JSX
         {
           name: 'needsJsx',
           type: () => (isFeatureFlagsUsed ? null : 'toggle'),
@@ -223,6 +264,8 @@ async function init() {
           active: language.defaultToggleOptions.active,
           inactive: language.defaultToggleOptions.inactive
         },
+
+        // 是否需要 vue-router
         {
           name: 'needsRouter',
           type: () => (isFeatureFlagsUsed ? null : 'toggle'),
@@ -231,6 +274,8 @@ async function init() {
           active: language.defaultToggleOptions.active,
           inactive: language.defaultToggleOptions.inactive
         },
+
+        // 是否需要 Pinia
         {
           name: 'needsPinia',
           type: () => (isFeatureFlagsUsed ? null : 'toggle'),
@@ -239,6 +284,8 @@ async function init() {
           active: language.defaultToggleOptions.active,
           inactive: language.defaultToggleOptions.inactive
         },
+
+        // 是否需要 vitest
         {
           name: 'needsVitest',
           type: () => (isFeatureFlagsUsed ? null : 'toggle'),
@@ -247,6 +294,8 @@ async function init() {
           active: language.defaultToggleOptions.active,
           inactive: language.defaultToggleOptions.inactive
         },
+
+        // 是否需要 e2e 测试
         {
           name: 'needsE2eTesting',
           type: () => (isFeatureFlagsUsed ? null : 'select'),
@@ -254,10 +303,12 @@ async function init() {
           message: language.needsE2eTesting.message,
           initial: 0,
           choices: (prev, answers) => [
+            // 【不需要】
             {
               title: language.needsE2eTesting.selectOptions.negative.title,
               value: false
             },
+            // 【同时支持基于 Cypress Component Testing 的单元测试】
             {
               title: language.needsE2eTesting.selectOptions.cypress.title,
               description: answers.needsVitest
@@ -265,6 +316,7 @@ async function init() {
                 : language.needsE2eTesting.selectOptions.cypress.desc,
               value: 'cypress'
             },
+            // 【同时支持基于 Nightwatch Component Testing 的单元测试】
             {
               title: language.needsE2eTesting.selectOptions.nightwatch.title,
               description: answers.needsVitest
@@ -272,12 +324,15 @@ async function init() {
                 : language.needsE2eTesting.selectOptions.nightwatch.desc,
               value: 'nightwatch'
             },
+            // 【playwright】
             {
               title: language.needsE2eTesting.selectOptions.playwright.title,
               value: 'playwright'
             }
           ]
         },
+
+        // 是否需要 Eslint
         {
           name: 'needsEslint',
           type: () => (isFeatureFlagsUsed ? null : 'toggle'),
@@ -286,6 +341,8 @@ async function init() {
           active: language.defaultToggleOptions.active,
           inactive: language.defaultToggleOptions.inactive
         },
+
+        // 是否需要 Prettier
         {
           name: 'needsPrettier',
           type: (prev, values) => {
@@ -299,6 +356,8 @@ async function init() {
           active: language.defaultToggleOptions.active,
           inactive: language.defaultToggleOptions.inactive
         },
+
+        // 是否需要 Dev Tools
         {
           name: 'needsDevTools',
           type: () => (isFeatureFlagsUsed ? null : 'toggle'),
@@ -308,6 +367,8 @@ async function init() {
           inactive: language.defaultToggleOptions.inactive
         }
       ],
+
+      // 中途退出，提示【操作取消】
       {
         onCancel: () => {
           throw new Error(red('✖') + ` ${language.errors.operationCancelled}`)
@@ -342,29 +403,39 @@ async function init() {
   const needsNightwatchCT = needsNightwatch && !needsVitest
   const needsPlaywright = argv.playwright || needsE2eTesting === 'playwright'
 
+  // 要创建的文件夹的路径
   const root = path.join(cwd, targetDir)
 
+  // 如果存在该文件夹，并且要强制覆盖
   if (fs.existsSync(root) && shouldOverwrite) {
     emptyDir(root)
-  } else if (!fs.existsSync(root)) {
+  } else if (!fs.existsSync(root)) { // 不存在就新建
     fs.mkdirSync(root)
   }
 
+  // 【正在初始化项目 [路径]】
   console.log(`\n${language.infos.scaffolding} ${root}...`)
 
   const pkg = { name: packageName, version: '0.0.0' }
+  // 写入包的名称和版本
   fs.writeFileSync(path.resolve(root, 'package.json'), JSON.stringify(pkg, null, 2))
 
   // todo:
   // work around the esbuild issue that `import.meta.url` cannot be correctly transpiled
   // when bundling for node and the format is cjs
   // const templateRoot = new URL('./template', import.meta.url).pathname
+  // 模版的文件夹
   const templateRoot = path.resolve(__dirname, 'template')
   const callbacks = []
   const render = function render(templateName) {
     const templateDir = path.resolve(templateRoot, templateName)
     renderTemplate(templateDir, root, callbacks)
   }
+
+  /**
+   * 基于各种配置，像目标文件夹中写入各种文件
+   */
+
   // Render base template
   render('base')
 
@@ -556,6 +627,7 @@ async function init() {
     // Rename entry in `index.html`
     const indexHtmlPath = path.resolve(root, 'index.html')
     const indexHtmlContent = fs.readFileSync(indexHtmlPath, 'utf8')
+    // 将 html 中的入口文件重名名为 ts 后缀的
     fs.writeFileSync(indexHtmlPath, indexHtmlContent.replace('src/main.js', 'src/main.ts'))
   } else {
     // Remove all the remaining `.ts` files
@@ -572,6 +644,7 @@ async function init() {
 
   // Instructions:
   // Supported package managers: pnpm > yarn > bun > npm
+  // 判断包管理器是啥
   const userAgent = process.env.npm_config_user_agent ?? ''
   const packageManager = /pnpm/.test(userAgent)
     ? 'pnpm'
@@ -582,6 +655,7 @@ async function init() {
         : 'npm'
 
   // README generation
+  // 写入 README 文件
   fs.writeFileSync(
     path.resolve(root, 'README.md'),
     generateReadme({
@@ -598,6 +672,7 @@ async function init() {
     })
   )
 
+  // 【项目初始化完成，可执行以下命令：】
   console.log(`\n${language.infos.done}\n`)
   if (root !== cwd) {
     const cdProjectName = path.relative(cwd, root)

@@ -1,10 +1,57 @@
-import * as fs from 'node:fs'
-import * as path from 'node:path'
-import { pathToFileURL } from 'node:url'
+## 记录学习 create-vue 脚手架学习到的内容
 
-import deepMerge from './deepMerge'
-import sortDependencies from './sortDependencies'
+### 主函数 index.js 中学习到的东西
 
+1. 判断控制台是否支持渐变字
+
+```JavaScript
+process.stdout.isTTY && process.stdout.getColorDepth() > 8
+```
+
+2. 可以使用 node 中 util 提供的 `parseArgs` 解析命令行的参数
+
+3. 使用 `prompts` 进行用户选项的询问
+
+4. 在存在相同名称的文件夹之后，使用递归处理删除，即 overwrite。如果遇到文件，直接删除，如果遇到文件夹，递归进去，将其中的文件都删除后，再删除文件夹。
+
+```JavaScript
+// 将一个文件夹删除
+function emptyDir(dir) {
+  if (!fs.existsSync(dir)) {
+    return
+  }
+
+  // 递归删除一个文件夹中所有内容，如果遇到文件夹，递归进去把里面文件删除了
+  postOrderDirectoryTraverse(
+    dir,
+    // 删除文件夹调用的方法
+    (dir) => fs.rmdirSync(dir),
+    // 删除文件调用的方法
+    (file) => fs.unlinkSync(file)
+  )
+}
+
+export function postOrderDirectoryTraverse(dir, dirCallback, fileCallback) {
+  for (const filename of fs.readdirSync(dir)) {
+    if (filename === '.git') {
+      continue
+    }
+    const fullpath = path.resolve(dir, filename)
+    if (fs.lstatSync(fullpath).isDirectory()) {
+      // 如果本身是一个文件，递归进去将其中的文件都删除掉
+      postOrderDirectoryTraverse(fullpath, dirCallback, fileCallback)
+      dirCallback(fullpath)
+      continue
+    }
+    fileCallback(fullpath)
+  }
+}
+```
+
+5. 将文件模版写到文件夹中调用的方法 - `renderTemplate` <br />
+   主要是在做各种配置文件的合并，和各种文件的处理
+
+```JavaScript
 /**
  * Renders a template folder/file to the file system,
  * by recursively copying all files under the `src` directory,
@@ -100,5 +147,20 @@ function renderTemplate(src, dest, callbacks) {
 
   fs.copyFileSync(src, dest)
 }
+```
 
-export default renderTemplate
+6. 判断一个项目使用了什么样的包管理器
+
+```JavaScript
+  // Instructions:
+  // Supported package managers: pnpm > yarn > bun > npm
+  // 判断包管理器是啥
+  const userAgent = process.env.npm_config_user_agent ?? ''
+  const packageManager = /pnpm/.test(userAgent)
+    ? 'pnpm'
+    : /yarn/.test(userAgent)
+      ? 'yarn'
+      : /bun/.test(userAgent)
+        ? 'bun'
+        : 'npm'
+```
