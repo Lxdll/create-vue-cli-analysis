@@ -241,3 +241,9 @@ export default function sortDependencies(packageJson) {
   }
 }
 ```
+
+### 代码规范
+
+1. 在提交时，可以使用 `husky` 检查 `git` 提交的规范性
+
+2. 可以使用 `lint-staged` 检查已暂存代码的规范性
